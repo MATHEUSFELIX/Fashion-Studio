@@ -141,7 +141,7 @@ const photoshootStoragePrefix = "studio-design-os:photoshoot";
 export function AiPhotoshootPage() {
   const { designId = "" } = useParams();
   const { selectedImageModel } = useModels();
-  const { activeCollection } = useStudio();
+  const { activeCollection, activeSku, addAsset, getAssetsForSku } = useStudio();
   const [selectedShotIds, setSelectedShotIds] = useState<string[]>(defaultSelected);
   const [personLock, setPersonLock] = useState(
     "Mesma menina em todas as fotos: aproximadamente 5 anos, cabelo castanho médio, expressão natural, mesmo rosto, mesmo tom de pele, mesmas proporções corporais.",
@@ -154,6 +154,7 @@ export function AiPhotoshootPage() {
   const [error, setError] = useState<string>();
   const assets = useAsync(() => api.listAssets("photoshoot", designId), [designId]);
   const storageKey = `${photoshootStoragePrefix}:${activeCollection.id}:${designId}`;
+  const savedSkuAssets = getAssetsForSku(activeSku?.id).filter((asset) => asset.kind === "photoshoot");
 
   const selectedShots = useMemo(
     () =>
@@ -229,10 +230,27 @@ export function AiPhotoshootPage() {
         model: selectedImageModel,
         identityLock: `${personLock} Collection age group: ${activeCollection.ageGroup}.`,
         outfitLock: `${outfitLock} Collection: ${activeCollection.name}. Theme: ${activeCollection.theme}. Palette: ${activeCollection.palette}. Materials: ${activeCollection.materials}. Rules: ${activeCollection.rules}.`,
+        referenceImageUrl: activeSku?.imageUrl,
         shots: selectedShots,
       });
       setGenerated(result.images);
       savePhotoshoot(result.images);
+      result.images.forEach((image) => {
+        const shot = selectedShots.find((item) => item.id === image.shotId);
+        addAsset({
+          collectionId: activeCollection.id,
+          skuId: activeSku?.id,
+          kind: "photoshoot",
+          title: shot?.label ?? image.shotId ?? "Photoshoot shot",
+          imageUrl: image.imageUrl,
+          payload: {
+            shot,
+            prompt: image.prompt,
+            model: image.model,
+            provider: image.provider,
+          },
+        });
+      });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Photoshoot generation failed.");
     } finally {
@@ -259,6 +277,15 @@ export function AiPhotoshootPage() {
               Select the images to create for {activeCollection.name}. The prompt locks the same
               child and outfit across all shots, changing only pose, angle, lighting, or style.
             </p>
+            {activeSku ? (
+              <p className="mt-2 text-sm font-semibold text-ink/70">
+                Master SKU: {activeSku.name} / {activeSku.category}
+              </p>
+            ) : (
+              <p className="mt-2 text-sm font-semibold text-red-700">
+                Generate and approve a master SKU first for stronger consistency.
+              </p>
+            )}
           </div>
           <Button disabled={isGenerating} onClick={generatePhotoshoot} type="button">
             {isGenerating ? "Generating selected shots..." : `Generate ${selectedShots.length} shots`}
@@ -345,6 +372,22 @@ export function AiPhotoshootPage() {
             );
           })}
         </section>
+      ) : null}
+
+      {savedSkuAssets.length ? (
+        <Panel>
+          <h3 className="text-lg font-semibold">Saved SKU photoshoot assets</h3>
+          <div className="mt-3 grid gap-4 md:grid-cols-3">
+            {savedSkuAssets.map((asset) => (
+              <div className="rounded-lg border border-ink/10 bg-white/70 p-3" key={asset.id}>
+                {asset.imageUrl ? (
+                  <img className="aspect-[3/4] w-full rounded-md object-cover" src={asset.imageUrl} alt="" />
+                ) : null}
+                <p className="mt-2 text-xs font-semibold text-ink/60">{asset.title}</p>
+              </div>
+            ))}
+          </div>
+        </Panel>
       ) : null}
 
       <AsyncBoundary {...assets}>

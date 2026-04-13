@@ -28,7 +28,7 @@ export function CreateDesignPage() {
   const [generatedText, setGeneratedText] = useState<string>();
   const [error, setError] = useState<string>();
   const { selectedTextModel, selectedImageModel } = useModels();
-  const { activeCollection } = useStudio();
+  const { activeCollection, skus, activeSkuId, addSku, approveSku, setActiveSkuId } = useStudio();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -92,10 +92,20 @@ export function CreateDesignPage() {
 
       setGeneratedText(textResult?.text);
       setGeneratedImage(imageResult?.imageUrl);
+      const sku = addSku({
+        collectionId: activeCollection.id,
+        name: form.title,
+        category: form.category,
+        prompt: form.prompt,
+        imageUrl: imageResult?.imageUrl ?? "",
+        summary: textResult?.text,
+        status: "draft",
+      });
       const response = await api.createDesign(form, {
         imageUrl: imageResult?.imageUrl,
         summary: textResult?.text,
       });
+      setActiveSkuId(sku.id);
       navigate(routes.designDetail(response.design_id));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Generation failed.");
@@ -127,6 +137,49 @@ export function CreateDesignPage() {
           ) : null}
           {generatedText ? <p className="mt-4 text-sm text-ink/70">{generatedText}</p> : null}
           {error ? <p className="mt-4 text-sm font-semibold text-red-700">{error}</p> : null}
+        </div>
+        <div className="mt-6">
+          <h3 className="text-lg font-semibold">Master SKUs</h3>
+          <div className="mt-3 space-y-3">
+            {skus.filter((sku) => sku.collectionId === activeCollection.id).length ? (
+              skus
+                .filter((sku) => sku.collectionId === activeCollection.id)
+                .map((sku) => (
+                  <button
+                    className={`w-full rounded-lg border p-3 text-left transition ${
+                      activeSkuId === sku.id ? "border-[#7d6758] bg-white" : "border-ink/10 bg-white/55"
+                    }`}
+                    key={sku.id}
+                    onClick={() => setActiveSkuId(sku.id)}
+                    type="button"
+                  >
+                    {sku.imageUrl ? (
+                      <img className="mb-3 aspect-square w-full rounded-md object-cover" src={sku.imageUrl} alt="" />
+                    ) : null}
+                    <p className="text-sm font-semibold">{sku.name}</p>
+                    <p className="text-xs text-ink/55">{sku.category}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Badge tone={sku.status === "master_approved" ? "success" : "neutral"}>
+                        {sku.status === "master_approved" ? "Master approved" : "Draft"}
+                      </Badge>
+                      {sku.status !== "master_approved" ? (
+                        <span
+                          className="rounded bg-ink px-2 py-1 text-xs font-semibold text-paper"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            approveSku(sku.id);
+                          }}
+                        >
+                          Use as master
+                        </span>
+                      ) : null}
+                    </div>
+                  </button>
+                ))
+            ) : (
+              <p className="text-sm text-ink/55">Generate a concept to create the first master SKU.</p>
+            )}
+          </div>
         </div>
       </Panel>
 

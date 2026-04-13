@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { useAsync } from "@/hooks/useAsync";
 import { api } from "@/services/api/mockApi";
 import type { CollectionPreset } from "@/types/domain/collectionPreset";
+import type { ProductSku, StudioAsset } from "@/types/domain/collectionPreset";
 import type { AssetType } from "@/types/domain/studio";
 import { formatDate } from "@/utils/format";
 
@@ -15,6 +16,8 @@ type ExportIncludeKey = "conceptRender" | "photoshootAssets" | "technicalFlat" |
 
 interface ExportPreview {
   included: Record<ExportIncludeKey, boolean>;
+  masterSku?: ProductSku;
+  assets: StudioAsset[];
   photoshoots: Array<{
     key: string;
     data: {
@@ -37,7 +40,7 @@ const exportOptions: Array<{
 
 export function ExportCenterPage() {
   const exports = useAsync(api.listExports, []);
-  const { activeCollection } = useStudio();
+  const { activeCollection, activeSku, getAssetsForSku } = useStudio();
   const [bundles, setBundles] = useState(exports.data ?? []);
   const [message, setMessage] = useState("");
   const [previewBundleId, setPreviewBundleId] = useState<string>();
@@ -68,6 +71,7 @@ export function ExportCenterPage() {
     .filter((option) => included[option.key] && option.type !== "score")
     .map((option) => option.type as AssetType);
   const selectedCount = Object.values(included).filter(Boolean).length;
+  const skuAssets = getAssetsForSku(activeSku?.id);
 
   const toggleIncluded = (key: ExportIncludeKey) => {
     setIncluded((current) => ({ ...current, [key]: !current[key] }));
@@ -96,13 +100,15 @@ export function ExportCenterPage() {
     return {
       exportedAt: new Date().toISOString(),
       collection: activeCollection,
+      masterSku: activeSku,
       bundle,
       included: {
         ...included,
       },
       photoshoots,
+      assets: skuAssets,
       note:
-        "Image data URLs are included when generated photoshoots were saved in this browser. Backend file packaging can replace this JSON handoff later.",
+        "This handoff is built from the active master SKU, selected export sections, saved photoshoot assets, and collection preset.",
     };
   };
 
@@ -130,6 +136,19 @@ export function ExportCenterPage() {
         </div>
         <h2 className="mt-3 text-3xl font-semibold tracking-tight">Export center</h2>
         <p className="mt-2 text-ink/65">Prepare concept, visual, and technical outputs for handoff.</p>
+        {activeSku ? (
+          <div className="mt-4 rounded-md bg-ink/5 p-3">
+            <p className="text-xs font-semibold uppercase text-ink/45">Active master SKU</p>
+            <p className="mt-1 text-sm font-semibold">{activeSku.name}</p>
+            <p className="mt-1 text-xs text-ink/55">
+              {skuAssets.length} saved assets connected to this SKU.
+            </p>
+          </div>
+        ) : (
+          <p className="mt-4 rounded-md bg-red-50 p-3 text-sm font-semibold text-red-700">
+            Generate a master SKU before exporting.
+          </p>
+        )}
         <div className="mt-5 space-y-3">
           {exportOptions.map((item) => (
             <label className="flex items-center gap-3 text-sm" key={item.key}>
@@ -142,7 +161,7 @@ export function ExportCenterPage() {
             </label>
           ))}
         </div>
-        <Button className="mt-5 w-full" disabled={!selectedCount} onClick={createExport} type="button">
+        <Button className="mt-5 w-full" disabled={!selectedCount || !activeSku} onClick={createExport} type="button">
           Create export bundle
         </Button>
         <p className="mt-3 text-xs text-ink/50">
@@ -195,6 +214,11 @@ export function ExportCenterPage() {
               <p className="mt-1 text-sm text-ink/60">
                 {activeCollection.name} / exported {formatDate(selectedPreview.exportedAt)}
               </p>
+              {selectedPreview.masterSku ? (
+                <p className="mt-1 text-sm font-semibold text-ink/70">
+                  Master SKU: {selectedPreview.masterSku.name}
+                </p>
+              ) : null}
             </div>
             <Button onClick={() => setPreviewBundleId(undefined)} type="button" variant="ghost">
               Close preview
@@ -213,6 +237,13 @@ export function ExportCenterPage() {
           {selectedPreview.included.conceptRender ? (
             <div className="mt-6">
               <h4 className="text-lg font-semibold">Concept render package</h4>
+              {selectedPreview.masterSku?.imageUrl ? (
+                <img
+                  className="mt-3 max-h-96 rounded-md object-contain"
+                  src={selectedPreview.masterSku.imageUrl}
+                  alt=""
+                />
+              ) : null}
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <PreviewMeta label="Collection" value={selectedPreview.collection.name} />
                 <PreviewMeta label="Theme" value={selectedPreview.collection.theme} />
@@ -246,8 +277,10 @@ export function ExportCenterPage() {
                 {
                   exportedAt: selectedPreview.exportedAt,
                   collection: selectedPreview.collection.name,
+                  masterSku: selectedPreview.masterSku?.name,
                   bundle: selectedPreview.bundle,
                   included: selectedPreview.included,
+                  assetCount: selectedPreview.assets.length,
                   photoshootCount: selectedPreview.photoshoots.reduce(
                     (total, item) =>
                       selectedPreview.included.photoshootAssets
@@ -277,7 +310,14 @@ function PreviewMeta({ label, value }: { label: string; value: string }) {
 }
 
 function PhotoshootPreview({ preview }: { preview: ExportPreview }) {
-  const images = preview.photoshoots.flatMap((item) => item.data.images ?? []);
+  const studioAssetImages = preview.assets
+    .filter((asset) => asset.kind === "photoshoot" && asset.imageUrl)
+    .map((asset) => ({
+      imageUrl: asset.imageUrl!,
+      shotId: asset.title,
+    }));
+  const legacyImages = preview.photoshoots.flatMap((item) => item.data.images ?? []);
+  const images = studioAssetImages.length ? studioAssetImages : legacyImages;
 
   return (
     <div className="mt-6">

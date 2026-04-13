@@ -40,6 +40,7 @@ interface GeneratePhotoshootRequest {
   model: Pick<ModelOption, "provider" | "id">;
   identityLock: string;
   outfitLock: string;
+  referenceImageUrl?: string;
   shots: GeneratePhotoshootShot[];
 }
 

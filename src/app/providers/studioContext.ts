@@ -1,13 +1,22 @@
 import { createContext, useContext } from "react";
-import type { CollectionPreset } from "@/types/domain/collectionPreset";
+import type { CollectionPreset, ProductSku, StudioAsset } from "@/types/domain/collectionPreset";
 
 export interface StudioContextValue {
   collections: CollectionPreset[];
   activeCollection: CollectionPreset;
   activeCollectionId: string;
+  skus: ProductSku[];
+  activeSku?: ProductSku;
+  activeSkuId?: string;
+  assets: StudioAsset[];
   addCollection: (collection: Omit<CollectionPreset, "id">) => void;
   updateCollectionBrief: (id: string, brief: CollectionPreset["brief"]) => void;
   setActiveCollectionId: (id: string) => void;
+  addSku: (sku: Omit<ProductSku, "id" | "createdAt">) => ProductSku;
+  approveSku: (id: string) => void;
+  setActiveSkuId: (id: string) => void;
+  addAsset: (asset: Omit<StudioAsset, "id" | "createdAt">) => StudioAsset;
+  getAssetsForSku: (skuId?: string) => StudioAsset[];
 }
 
 export const StudioContext = createContext<StudioContextValue | undefined>(undefined);

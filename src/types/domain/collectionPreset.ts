@@ -20,3 +20,33 @@ export interface CollectionBrief {
   }>;
   rulesApplied: string;
 }
+
+export interface ProductSku {
+  id: string;
+  collectionId: string;
+  name: string;
+  category: string;
+  prompt: string;
+  imageUrl: string;
+  summary?: string;
+  status: "draft" | "master_approved";
+  createdAt: string;
+}
+
+export type StudioAssetKind =
+  | "master_sku"
+  | "photoshoot"
+  | "technical_flat"
+  | "score_summary"
+  | "export";
+
+export interface StudioAsset {
+  id: string;
+  collectionId: string;
+  skuId?: string;
+  kind: StudioAssetKind;
+  title: string;
+  imageUrl?: string;
+  payload?: unknown;
+  createdAt: string;
+}

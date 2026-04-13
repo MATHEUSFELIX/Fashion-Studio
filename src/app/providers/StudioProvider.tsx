@@ -1,9 +1,12 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { StudioContext } from "@/app/providers/studioContext";
-import type { CollectionPreset } from "@/types/domain/collectionPreset";
+import type { CollectionPreset, ProductSku, StudioAsset } from "@/types/domain/collectionPreset";
 
 const storageKey = "studio-design-os:collections";
 const activeStorageKey = "studio-design-os:active-collection";
+const skuStorageKey = "studio-design-os:skus";
+const activeSkuStorageKey = "studio-design-os:active-sku";
+const assetStorageKey = "studio-design-os:studio-assets";
 
 const defaultCollection: CollectionPreset = {
   id: "autumn-neutrals",
@@ -28,13 +31,37 @@ function readCollections(): CollectionPreset[] {
   }
 }
 
-function persist(collections: CollectionPreset[], activeId: string) {
+function readJsonArray<T>(key: string): T[] {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistCollections(collections: CollectionPreset[], activeId: string) {
   window.localStorage.setItem(storageKey, JSON.stringify(collections));
   window.localStorage.setItem(activeStorageKey, activeId);
 }
 
+function persistSkus(skus: ProductSku[], activeSkuId?: string) {
+  window.localStorage.setItem(skuStorageKey, JSON.stringify(skus));
+  if (activeSkuId) {
+    window.localStorage.setItem(activeSkuStorageKey, activeSkuId);
+  }
+}
+
+function persistAssets(assets: StudioAsset[]) {
+  window.localStorage.setItem(assetStorageKey, JSON.stringify(assets));
+}
+
 export function StudioProvider({ children }: { children: ReactNode }) {
   const [collections, setCollections] = useState<CollectionPreset[]>(() => readCollections());
+  const [skus, setSkus] = useState<ProductSku[]>(() => readJsonArray<ProductSku>(skuStorageKey));
+  const [assets, setAssets] = useState<StudioAsset[]>(() =>
+    readJsonArray<StudioAsset>(assetStorageKey),
+  );
   const [activeCollectionId, setActiveCollectionIdState] = useState(() => {
     try {
       return window.localStorage.getItem(activeStorageKey) ?? defaultCollection.id;
@@ -42,21 +69,35 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       return defaultCollection.id;
     }
   });
+  const [activeSkuId, setActiveSkuIdState] = useState(() => {
+    try {
+      return window.localStorage.getItem(activeSkuStorageKey) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  });
 
   const activeCollection =
     collections.find((collection) => collection.id === activeCollectionId) ?? collections[0] ?? defaultCollection;
+  const activeSku =
+    skus.find((sku) => sku.id === activeSkuId && sku.collectionId === activeCollection.id) ??
+    skus.find((sku) => sku.collectionId === activeCollection.id);
 
   const value = useMemo(
     () => ({
       collections,
       activeCollection,
       activeCollectionId: activeCollection.id,
+      skus,
+      activeSku,
+      activeSkuId: activeSku?.id,
+      assets,
       addCollection: (collection: Omit<CollectionPreset, "id">) => {
         const id = `${collection.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
         const nextCollection = { ...collection, id };
         setCollections((current) => {
           const next = [...current, nextCollection];
-          persist(next, id);
+          persistCollections(next, id);
           return next;
         });
         setActiveCollectionIdState(id);
@@ -66,16 +107,73 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           const next = current.map((collection) =>
             collection.id === id ? { ...collection, brief } : collection,
           );
-          persist(next, activeCollection.id);
+          persistCollections(next, activeCollection.id);
           return next;
         });
       },
       setActiveCollectionId: (id: string) => {
         setActiveCollectionIdState(id);
-        persist(collections, id);
+        persistCollections(collections, id);
       },
+      addSku: (sku: Omit<ProductSku, "id" | "createdAt">) => {
+        const nextSku: ProductSku = {
+          ...sku,
+          id: `sku_${Date.now()}`,
+          createdAt: new Date().toISOString(),
+        };
+        setSkus((current) => {
+          const next = [nextSku, ...current];
+          persistSkus(next, nextSku.id);
+          return next;
+        });
+        setActiveSkuIdState(nextSku.id);
+        const asset: StudioAsset = {
+          id: `asset_${Date.now()}`,
+          collectionId: sku.collectionId,
+          skuId: nextSku.id,
+          kind: "master_sku",
+          title: nextSku.name,
+          imageUrl: nextSku.imageUrl,
+          payload: { prompt: nextSku.prompt, summary: nextSku.summary },
+          createdAt: new Date().toISOString(),
+        };
+        setAssets((current) => {
+          const next = [asset, ...current];
+          persistAssets(next);
+          return next;
+        });
+        return nextSku;
+      },
+      approveSku: (id: string) => {
+        setSkus((current) => {
+          const next = current.map((sku) =>
+            sku.id === id ? { ...sku, status: "master_approved" as const } : sku,
+          );
+          persistSkus(next, id);
+          return next;
+        });
+      },
+      setActiveSkuId: (id: string) => {
+        setActiveSkuIdState(id);
+        persistSkus(skus, id);
+      },
+      addAsset: (asset: Omit<StudioAsset, "id" | "createdAt">) => {
+        const nextAsset: StudioAsset = {
+          ...asset,
+          id: `studio_asset_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          createdAt: new Date().toISOString(),
+        };
+        setAssets((current) => {
+          const next = [nextAsset, ...current];
+          persistAssets(next);
+          return next;
+        });
+        return nextAsset;
+      },
+      getAssetsForSku: (skuId?: string) =>
+        assets.filter((asset) => (skuId ? asset.skuId === skuId : asset.collectionId === activeCollection.id)),
     }),
-    [activeCollection, collections],
+    [activeCollection, activeSku, assets, collections, skus],
   );
 
   return <StudioContext.Provider value={value}>{children}</StudioContext.Provider>;

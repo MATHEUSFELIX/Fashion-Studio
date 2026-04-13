@@ -8,9 +8,8 @@ const items = [
   { label: "Collection", to: routes.workspace },
   { label: "SKU Gen", to: routes.createDesign },
   { label: "Photoshoot", to: routes.photoshoot("des_123") },
-  { label: "Collections", to: routes.collections },
-  { label: "Assets", to: routes.assets },
-  { label: "Exports", to: routes.exports },
+  { label: "Review", to: routes.review("des_123") },
+  { label: "Export", to: routes.exports },
   { label: "Models", to: routes.models },
 ];
 
