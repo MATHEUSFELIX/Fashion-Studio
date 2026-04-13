@@ -152,6 +152,31 @@ async function fetchJson(url, init) {
   return json;
 }
 
+async function imageUrlToBlob(imageUrl) {
+  if (imageUrl.startsWith("data:")) {
+    const [meta, data] = imageUrl.split(",");
+    const mimeType = meta.match(/^data:(.*?);base64$/)?.[1] || "image/png";
+    return new Blob([Buffer.from(data, "base64")], { type: mimeType });
+  }
+
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error(`Unable to fetch reference image: ${response.status} ${response.statusText}`);
+  }
+  return new Blob([Buffer.from(await response.arrayBuffer())], {
+    type: response.headers.get("content-type") || "image/png",
+  });
+}
+
+async function imageUrlToGeminiInlineData(imageUrl) {
+  const blob = await imageUrlToBlob(imageUrl);
+  const buffer = Buffer.from(await blob.arrayBuffer());
+  return {
+    mimeType: blob.type || "image/png",
+    data: buffer.toString("base64"),
+  };
+}
+
 function makeModel(provider, id, kind, source = "provider_list", name = id) {
   return {
     id,
@@ -398,11 +423,14 @@ async function generateImage(body) {
     throw new Error("Prompt is required.");
   }
 
+  const referenceImageUrl = body.referenceImageUrl;
   const result =
     model.provider === "openai"
-      ? await generateOpenAiImage(model.id, prompt)
+      ? referenceImageUrl
+        ? await editOpenAiImage(model.id, prompt, referenceImageUrl)
+        : await generateOpenAiImage(model.id, prompt)
       : model.provider === "gemini"
-        ? await generateGeminiImage(model.id, prompt)
+        ? await generateGeminiImage(model.id, prompt, referenceImageUrl)
         : model.provider === "ollama"
           ? await generateOllamaImage(model.id, prompt)
           : model.provider === "stability"
@@ -424,21 +452,25 @@ async function generatePhotoshoot(body) {
   }
 
   const images = [];
-  for (const shot of shots) {
-    images.push(
-      await generateImage({
-        model,
-        shotId: shot.id,
-        prompt: [
-          `Shot: ${shot.label}.`,
-          `Category: ${shot.category}.`,
-          shot.prompt,
-          "Only change the pose, camera angle, crop, lighting style, or movement requested by this shot.",
-        ].join(" "),
-        identityLock: body.identityLock,
-        outfitLock: body.outfitLock,
-      }),
-    );
+  let referenceImageUrl = body.referenceImageUrl;
+  for (const [index, shot] of shots.entries()) {
+    const image = await generateImage({
+      model,
+      shotId: shot.id,
+      prompt: [
+        `Shot: ${shot.label}.`,
+        `Category: ${shot.category}.`,
+        shot.prompt,
+        index === 0
+          ? "This is the master reference image for the person and outfit."
+          : "Use the reference image as the identity and outfit source. Preserve the same child, gender presentation, face, hair, skin tone, garment, sleeve length, color, fabric, seams, proportions, and styling. Only change the requested pose, camera angle, crop, lighting, or shot style.",
+      ].join(" "),
+      identityLock: body.identityLock,
+      outfitLock: body.outfitLock,
+      referenceImageUrl,
+    });
+    images.push(image);
+    referenceImageUrl = referenceImageUrl || image.imageUrl;
   }
 
   return { images };
@@ -454,6 +486,8 @@ function buildFashionImagePrompt(prompt, locks = {}) {
     locks.outfitLock ||
       "Use the exact same outfit in every selected image: same garment, same color, same fabric, same fit, same seams and trims.",
     "Do not redesign the clothing between shots. Do not change the person between shots.",
+    "Hard continuity rules: do not change girl to boy or boy to girl; do not change short sleeves to long sleeves; do not change shirt type, color, neckline, print, hem, fabric, or fit; do not add jackets, layers, logos, accessories, or new garments unless explicitly requested.",
+    "Every shot belongs to the same photoshoot contact sheet, same model, same outfit, different pose/camera/lighting only.",
     "",
     "Mandatory brand and subject rules:",
     "Loom & Spool kids neutral studio preset.",
@@ -522,6 +556,44 @@ async function generateOpenAiImage(model, prompt) {
   };
 }
 
+async function editOpenAiImage(model, prompt, referenceImageUrl) {
+  const apiKey = env("OPENAI_API_KEY", "VITE_OPENAI_API_KEY");
+  if (!apiKey) throw new Error("OPENAI_API_KEY is missing.");
+  const baseUrl = withTrailingSlash(env("OPENAI_BASE_URL", "VITE_OPENAI_BASE_URL") || "https://api.openai.com/v1");
+
+  const formData = new FormData();
+  formData.set("model", model.startsWith("dall-e") ? "gpt-image-1" : model);
+  formData.set("prompt", prompt);
+  formData.set("size", "1024x1024");
+  formData.set("image", await imageUrlToBlob(referenceImageUrl), "reference.png");
+
+  const response = await fetch(`${baseUrl}images/edits`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: formData,
+  });
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : {};
+  if (!response.ok) {
+    throw new Error(payload.error?.message || payload.error || `${response.status} ${response.statusText}`);
+  }
+
+  const image = payload.data?.[0];
+  const imageUrl = image?.b64_json ? `data:image/png;base64,${image.b64_json}` : image?.url;
+  if (!imageUrl) {
+    throw new Error("Image edit provider returned no image.");
+  }
+
+  return {
+    provider: "openai",
+    model,
+    imageUrl,
+    revisedPrompt: image.revised_prompt,
+  };
+}
+
 async function generateGeminiText(model, prompt, instructions) {
   const apiKey = env("GOOGLE_AI_API_KEY", "VITE_GEMINI_API_KEY");
   if (!apiKey) throw new Error("GOOGLE_AI_API_KEY is missing.");
@@ -548,7 +620,7 @@ async function generateGeminiText(model, prompt, instructions) {
   };
 }
 
-async function generateGeminiImage(model, prompt) {
+async function generateGeminiImage(model, prompt, referenceImageUrl) {
   const apiKey = env("GOOGLE_AI_API_KEY", "VITE_GEMINI_API_KEY");
   if (!apiKey) throw new Error("GOOGLE_AI_API_KEY is missing.");
 
@@ -584,6 +656,11 @@ async function generateGeminiImage(model, prompt) {
     };
   }
 
+  const referencePart = referenceImageUrl
+    ? {
+        inlineData: await imageUrlToGeminiInlineData(referenceImageUrl),
+      }
+    : undefined;
   const payload = await fetchJson(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
@@ -593,7 +670,7 @@ async function generateGeminiImage(model, prompt) {
         "x-goog-api-key": apiKey,
       },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: [{ parts: referencePart ? [referencePart, { text: prompt }] : [{ text: prompt }] }],
         generationConfig: {
           responseModalities: ["TEXT", "IMAGE"],
         },

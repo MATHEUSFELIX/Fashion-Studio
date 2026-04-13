@@ -141,6 +141,12 @@ export function AiPhotoshootPage() {
   const { selectedImageModel } = useModels();
   const { activeCollection } = useStudio();
   const [selectedShotIds, setSelectedShotIds] = useState<string[]>(defaultSelected);
+  const [personLock, setPersonLock] = useState(
+    "Mesma menina em todas as fotos: aproximadamente 5 anos, cabelo castanho médio, expressão natural, mesmo rosto, mesmo tom de pele, mesmas proporções corporais.",
+  );
+  const [outfitLock, setOutfitLock] = useState(
+    "Mesma roupa em todas as fotos: camiseta infantil de manga curta em algodão orgânico, cor ecru ou soft sage, modelagem relaxada, mesma gola, mesmas mangas curtas, mesma barra, sem trocar para manga longa, sem trocar a camiseta.",
+  );
   const [generated, setGenerated] = useState<GenerateImageResponse[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string>();
@@ -177,10 +183,8 @@ export function AiPhotoshootPage() {
     try {
       const result = await aiApi.generatePhotoshoot({
         model: selectedImageModel,
-        identityLock:
-          `Same child model across the entire photoshoot: ${activeCollection.ageGroup}, soft natural expression, same face, same hair, same skin tone, same body proportions.`,
-        outfitLock:
-          `Exact same Loom & Spool outfit from collection ${activeCollection.name} across every generated image. Theme: ${activeCollection.theme}. Palette: ${activeCollection.palette}. Materials: ${activeCollection.materials}. Rules: ${activeCollection.rules}. No logo, no print changes, no color changes, no silhouette changes.`,
+        identityLock: `${personLock} Collection age group: ${activeCollection.ageGroup}.`,
+        outfitLock: `${outfitLock} Collection: ${activeCollection.name}. Theme: ${activeCollection.theme}. Palette: ${activeCollection.palette}. Materials: ${activeCollection.materials}. Rules: ${activeCollection.rules}.`,
         shots: selectedShots,
       });
       setGenerated(result.images);
@@ -215,6 +219,29 @@ export function AiPhotoshootPage() {
 
       <Panel>
         <div className="space-y-5">
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              <span className="text-xs font-bold uppercase tracking-wider text-ink/45">
+                Pessoa fixa
+              </span>
+              <textarea
+                className="mt-2 min-h-28 w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm"
+                onChange={(event) => setPersonLock(event.target.value)}
+                value={personLock}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-bold uppercase tracking-wider text-ink/45">
+                Roupa fixa
+              </span>
+              <textarea
+                className="mt-2 min-h-28 w-full rounded-md border border-ink/15 bg-white px-3 py-2 text-sm"
+                onChange={(event) => setOutfitLock(event.target.value)}
+                value={outfitLock}
+              />
+            </label>
+          </div>
+
           {shotGroups.map((group) => (
             <div key={group.category}>
               <p className="mb-2 text-xs font-bold uppercase tracking-wider text-ink/35">
