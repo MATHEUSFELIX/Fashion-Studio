@@ -9,11 +9,22 @@ import { useAsync } from "@/hooks/useAsync";
 import { api } from "@/services/api/mockApi";
 import { formatDate } from "@/utils/format";
 
+interface ExportPreview {
+  photoshoots: Array<{
+    key: string;
+    data: {
+      images?: Array<{ imageUrl: string; shotId?: string }>;
+      savedAt?: string;
+    };
+  }>;
+}
+
 export function ExportCenterPage() {
   const exports = useAsync(api.listExports, []);
   const { activeCollection } = useStudio();
   const [bundles, setBundles] = useState(exports.data ?? []);
   const [message, setMessage] = useState("");
+  const [previewBundleId, setPreviewBundleId] = useState<string>();
 
   useEffect(() => {
     if (exports.data) {
@@ -42,7 +53,7 @@ export function ExportCenterPage() {
     setBundles((current) => [bundle, ...current]);
   };
 
-  const downloadBundle = (bundleId: string) => {
+  const buildBundlePayload = (bundleId: string) => {
     const photoshootKeys = Object.keys(window.localStorage).filter((key) =>
       key.startsWith(`studio-design-os:photoshoot:${activeCollection.id}:`),
     );
@@ -51,7 +62,7 @@ export function ExportCenterPage() {
       data: JSON.parse(window.localStorage.getItem(key) ?? "{}"),
     }));
     const bundle = bundles.find((item) => item.id === bundleId);
-    const payload = {
+    return {
       exportedAt: new Date().toISOString(),
       collection: activeCollection,
       bundle,
@@ -65,6 +76,10 @@ export function ExportCenterPage() {
       note:
         "Image data URLs are included when generated photoshoots were saved in this browser. Backend file packaging can replace this JSON handoff later.",
     };
+  };
+
+  const downloadBundle = (bundleId: string) => {
+    const payload = buildBundlePayload(bundleId);
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
     });
@@ -75,6 +90,8 @@ export function ExportCenterPage() {
     anchor.click();
     URL.revokeObjectURL(url);
   };
+
+  const selectedPreview = previewBundleId ? buildBundlePayload(previewBundleId) : undefined;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
@@ -115,14 +132,14 @@ export function ExportCenterPage() {
                   </Badge>
                 </div>
                 {bundle.status === "complete" ? (
-                  <Button
-                    className="mt-4"
-                    onClick={() => downloadBundle(bundle.id)}
-                    type="button"
-                    variant="secondary"
-                  >
-                    Download bundle JSON
-                  </Button>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <Button onClick={() => setPreviewBundleId(bundle.id)} type="button" variant="secondary">
+                      Show on screen
+                    </Button>
+                    <Button onClick={() => downloadBundle(bundle.id)} type="button" variant="secondary">
+                      Download bundle JSON
+                    </Button>
+                  </div>
                 ) : (
                   <p className="mt-4 text-sm text-ink/55">
                     Preparing metadata, selected assets, photoshoot references, and preset details.
@@ -133,6 +150,100 @@ export function ExportCenterPage() {
           </div>
         )}
       </AsyncBoundary>
+
+      {selectedPreview ? (
+        <Panel className="lg:col-span-2">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <Badge tone="success">Bundle preview</Badge>
+              <h3 className="mt-3 text-2xl font-semibold">{selectedPreview.bundle?.title}</h3>
+              <p className="mt-1 text-sm text-ink/60">
+                {activeCollection.name} / exported {formatDate(selectedPreview.exportedAt)}
+              </p>
+            </div>
+            <Button onClick={() => setPreviewBundleId(undefined)} type="button" variant="ghost">
+              Close preview
+            </Button>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-4">
+            {Object.entries(selectedPreview.included).map(([key, value]) => (
+              <div className="rounded-md bg-ink/5 p-3" key={key}>
+                <p className="text-xs font-semibold uppercase text-ink/45">{key}</p>
+                <p className="mt-1 text-sm">{value ? "Included" : "Skipped"}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6">
+            <h4 className="text-lg font-semibold">Collection preset</h4>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <PreviewMeta label="Theme" value={selectedPreview.collection.theme} />
+              <PreviewMeta label="Age group" value={selectedPreview.collection.ageGroup} />
+              <PreviewMeta label="Palette" value={selectedPreview.collection.palette} />
+              <PreviewMeta label="Materials" value={selectedPreview.collection.materials} />
+            </div>
+            <p className="mt-3 rounded-md bg-ink/5 p-3 text-sm text-ink/70">
+              {selectedPreview.collection.rules}
+            </p>
+          </div>
+
+          <PhotoshootPreview preview={selectedPreview} />
+
+          <div className="mt-6">
+            <h4 className="text-lg font-semibold">Manifest</h4>
+            <pre className="mt-3 max-h-80 overflow-auto rounded-md bg-ink p-4 text-xs text-paper">
+              {JSON.stringify(
+                {
+                  exportedAt: selectedPreview.exportedAt,
+                  collection: selectedPreview.collection.name,
+                  bundle: selectedPreview.bundle,
+                  included: selectedPreview.included,
+                  photoshootCount: selectedPreview.photoshoots.reduce(
+                    (total, item) => total + (item.data.images?.length ?? 0),
+                    0,
+                  ),
+                },
+                null,
+                2,
+              )}
+            </pre>
+          </div>
+        </Panel>
+      ) : null}
+    </div>
+  );
+}
+
+function PreviewMeta({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-ink/5 p-3">
+      <p className="text-xs font-semibold uppercase text-ink/45">{label}</p>
+      <p className="mt-1 text-sm">{value}</p>
+    </div>
+  );
+}
+
+function PhotoshootPreview({ preview }: { preview: ExportPreview }) {
+  const images = preview.photoshoots.flatMap((item) => item.data.images ?? []);
+
+  return (
+    <div className="mt-6">
+      <h4 className="text-lg font-semibold">Photoshoot assets</h4>
+      {images.length ? (
+        <div className="mt-3 grid gap-4 md:grid-cols-3">
+          {images.map((image, index) => (
+            <div className="rounded-lg border border-ink/10 bg-white/70 p-3" key={`${image.shotId}-${index}`}>
+              <img className="aspect-[3/4] w-full rounded-md object-cover" src={image.imageUrl} alt="" />
+              <p className="mt-2 text-xs font-semibold text-ink/60">{image.shotId ?? `shot-${index + 1}`}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-ink/60">
+          No saved photoshoot images found for this collection in this browser.
+        </p>
+      )}
     </div>
   );
 }
