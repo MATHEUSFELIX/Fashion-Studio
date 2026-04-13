@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useStudio } from "@/app/providers/studioContext";
 import { useModels } from "@/app/providers/modelContext";
@@ -136,6 +136,8 @@ const shotGroups: Array<{
 
 const defaultSelected = ["front-full-body", "back-full-body", "detail-close", "natural-editorial"];
 
+const photoshootStoragePrefix = "studio-design-os:photoshoot";
+
 export function AiPhotoshootPage() {
   const { designId = "" } = useParams();
   const { selectedImageModel } = useModels();
@@ -151,6 +153,7 @@ export function AiPhotoshootPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string>();
   const assets = useAsync(() => api.listAssets("photoshoot", designId), [designId]);
+  const storageKey = `${photoshootStoragePrefix}:${activeCollection.id}:${designId}`;
 
   const selectedShots = useMemo(
     () =>
@@ -161,6 +164,47 @@ export function AiPhotoshootPage() {
       ),
     [selectedShotIds],
   );
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (!raw) {
+        setGenerated([]);
+        return;
+      }
+      const saved = JSON.parse(raw) as {
+        images?: GenerateImageResponse[];
+        selectedShotIds?: string[];
+        personLock?: string;
+        outfitLock?: string;
+      };
+      setGenerated(saved.images ?? []);
+      if (saved.selectedShotIds?.length) {
+        setSelectedShotIds(saved.selectedShotIds);
+      }
+      if (saved.personLock) {
+        setPersonLock(saved.personLock);
+      }
+      if (saved.outfitLock) {
+        setOutfitLock(saved.outfitLock);
+      }
+    } catch {
+      setGenerated([]);
+    }
+  }, [storageKey]);
+
+  const savePhotoshoot = (images: GenerateImageResponse[]) => {
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        images,
+        selectedShotIds,
+        personLock,
+        outfitLock,
+        savedAt: new Date().toISOString(),
+      }),
+    );
+  };
 
   const toggleShot = (id: string) => {
     setSelectedShotIds((current) =>
@@ -188,11 +232,17 @@ export function AiPhotoshootPage() {
         shots: selectedShots,
       });
       setGenerated(result.images);
+      savePhotoshoot(result.images);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Photoshoot generation failed.");
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const clearPhotoshoot = () => {
+    window.localStorage.removeItem(storageKey);
+    setGenerated([]);
   };
 
   return (
@@ -213,6 +263,11 @@ export function AiPhotoshootPage() {
           <Button disabled={isGenerating} onClick={generatePhotoshoot} type="button">
             {isGenerating ? "Generating selected shots..." : `Generate ${selectedShots.length} shots`}
           </Button>
+          {generated.length ? (
+            <Button onClick={clearPhotoshoot} type="button" variant="secondary">
+              Clear saved shots
+            </Button>
+          ) : null}
         </div>
         {error ? <p className="mt-4 text-sm font-semibold text-red-700">{error}</p> : null}
       </Panel>
