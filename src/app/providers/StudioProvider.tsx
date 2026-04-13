@@ -156,7 +156,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       },
       setActiveSkuId: (id: string) => {
         setActiveSkuIdState(id);
-        persistSkus(skus, id);
+        window.localStorage.setItem(activeSkuStorageKey, id);
       },
       addAsset: (asset: Omit<StudioAsset, "id" | "createdAt">) => {
         const nextAsset: StudioAsset = {

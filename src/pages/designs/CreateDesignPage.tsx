@@ -33,12 +33,11 @@ export function CreateDesignPage() {
 
   useEffect(() => {
     setForm((current) => {
-      if (activeCollection.categories.includes(current.category)) {
-        return current;
-      }
+      const categories = activeCollection.categories.length ? activeCollection.categories : [current.category];
+      const category = categories.includes(current.category) ? current.category : categories[0];
       return {
         ...current,
-        category: activeCollection.categories[0] ?? current.category,
+        category,
         collection_id: activeCollection.id,
       };
     });
@@ -89,6 +88,9 @@ export function CreateDesignPage() {
             })
           : Promise.resolve(undefined),
       ]);
+      if (!textResult && !imageResult) {
+        throw new Error("Choose at least one working text or image model before creating a design.");
+      }
 
       setGeneratedText(textResult?.text);
       setGeneratedImage(imageResult?.imageUrl);
@@ -222,7 +224,7 @@ export function CreateDesignPage() {
                 onChange={(event) => update("category", event.target.value)}
                 value={form.category}
               >
-                {activeCollection.categories.map((category) => (
+                {(activeCollection.categories.length ? activeCollection.categories : [form.category]).map((category) => (
                   <option key={category} value={category}>
                     {category}
                   </option>
