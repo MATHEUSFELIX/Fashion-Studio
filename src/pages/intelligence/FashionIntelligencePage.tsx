@@ -1,10 +1,13 @@
 import { useMemo, useState } from "react";
+import { useModels } from "@/app/providers/modelContext";
 import { useStudio } from "@/app/providers/studioContext";
 import { routes } from "@/app/router/routes";
 import { Panel } from "@/components/panels/Panel";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { BriefIntelligencePanel } from "@/features/fashion-intelligence/components/BriefIntelligencePanel";
+import { fashionPersonas } from "@/features/fashion-intelligence/personas/fashionPersonas";
+import type { FashionPersona } from "@/features/fashion-intelligence/types/intelligence";
 import type { CollectionBrief, CollectionPreset } from "@/types/domain/collectionPreset";
 
 type FashionGoal = "evaluate" | "discover_license" | "discover_own";
@@ -23,6 +26,14 @@ interface FashionIntelligenceDraft {
   styleContext: string;
   decliningItem: string;
   decliningReason: string;
+}
+
+interface SimulationConfigDraft {
+  rounds: number;
+  enableAdvocatus: boolean;
+  comparisonProvider: string;
+  selectedPersonaIds: string[];
+  customPersonas: FashionPersona[];
 }
 
 const goals: Array<{ id: FashionGoal; icon: string; label: string; desc: string }> = [
@@ -55,6 +66,7 @@ const fieldClass = "mt-2 w-full rounded-md border border-ink/15 bg-white px-3 py
 
 export function FashionIntelligencePage() {
   const { activeCollection, addCollection, setActiveCollectionId } = useStudio();
+  const { registry } = useModels();
   const [draft, setDraft] = useState<FashionIntelligenceDraft>(() => ({
     goal: "evaluate",
     collectionType: "own",
@@ -74,9 +86,21 @@ export function FashionIntelligencePage() {
     decliningItem: "",
     decliningReason: "",
   }));
+  const [simulationConfig, setSimulationConfig] = useState<SimulationConfigDraft>(() => ({
+    rounds: 1,
+    enableAdvocatus: false,
+    comparisonProvider: "off",
+    selectedPersonaIds: fashionPersonas.map((persona) => persona.id),
+    customPersonas: [],
+  }));
+  const [showCustomAgent, setShowCustomAgent] = useState(false);
   const [savedMessage, setSavedMessage] = useState<string>();
 
-  const context = useMemo(() => buildContext(draft), [draft]);
+  const availableProviders = useMemo(() => {
+    const providers = registry?.textModels.map((model) => model.provider) ?? ["openai", "gemini", "anthropic"];
+    return Array.from(new Set(providers));
+  }, [registry?.textModels]);
+  const context = useMemo(() => buildContext(draft, simulationConfig), [draft, simulationConfig]);
 
   const saveAsCollection = () => {
     const collection = addCollection({
@@ -92,6 +116,15 @@ export function FashionIntelligencePage() {
     });
     setActiveCollectionId(collection.id);
     setSavedMessage(`${collection.name} foi salva e definida como coleção ativa.`);
+  };
+
+  const launchSimulation = () => {
+    saveAsCollection();
+    setSavedMessage(
+      `Simulação configurada com ${simulationConfig.selectedPersonaIds.length + simulationConfig.customPersonas.length}${
+        simulationConfig.enableAdvocatus ? " + Advocatus Diaboli" : ""
+      } perspectivas e ${simulationConfig.rounds} round(s). Clique em Run Intelligence para gerar a análise.`,
+    );
   };
 
   return (
@@ -257,8 +290,20 @@ export function FashionIntelligencePage() {
               />
             </label>
 
+            <SimulationControls
+              availableProviders={availableProviders}
+              config={simulationConfig}
+              draft={draft}
+              onChange={setSimulationConfig}
+              onToggleCustomAgent={() => setShowCustomAgent((current) => !current)}
+              showCustomAgent={showCustomAgent}
+            />
+
             <Button className="w-full" onClick={saveAsCollection} type="button">
               Salvar como coleção ativa
+            </Button>
+            <Button className="w-full bg-[#f1c978] text-ink hover:bg-[#eabf69]" onClick={launchSimulation} type="button">
+              Launch Simulation
             </Button>
             {savedMessage ? <p className="text-sm font-semibold text-moss">{savedMessage}</p> : null}
           </div>
@@ -280,6 +325,238 @@ export function FashionIntelligencePage() {
 
           <BriefIntelligencePanel context={context} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SimulationControls({
+  availableProviders,
+  config,
+  draft,
+  onChange,
+  onToggleCustomAgent,
+  showCustomAgent,
+}: {
+  availableProviders: string[];
+  config: SimulationConfigDraft;
+  draft: FashionIntelligenceDraft;
+  onChange: (config: SimulationConfigDraft) => void;
+  onToggleCustomAgent: () => void;
+  showCustomAgent: boolean;
+}) {
+  const allPersonas = [...fashionPersonas, ...config.customPersonas];
+  const activeCount =
+    config.selectedPersonaIds.length + config.customPersonas.length + (config.enableAdvocatus ? 1 : 0);
+
+  const togglePersona = (id: string) => {
+    onChange({
+      ...config,
+      selectedPersonaIds: config.selectedPersonaIds.includes(id)
+        ? config.selectedPersonaIds.filter((personaId) => personaId !== id)
+        : [...config.selectedPersonaIds, id],
+    });
+  };
+
+  const generateContextualAgents = () => {
+    const generated: FashionPersona[] = [
+      {
+        id: `contextual_pricing_${Date.now()}`,
+        name: "The Pricing Lead",
+        role: "Price Architecture Reviewer",
+        perspective: `Checks whether ${draft.priceRange || "the target price"} can support the idea commercially.`,
+        systemPrompt: "Evaluate price architecture, perceived value, markdown risk, and SKU role.",
+        color: "text-amber-700",
+        bgColor: "bg-amber-50 border-amber-100",
+        sentimentBias: -0.1,
+      },
+      {
+        id: `contextual_channel_${Date.now()}`,
+        name: "The Channel Lead",
+        role: "Retail Channel Strategist",
+        perspective: `Reads the concept through ${draft.retailer || "retail"} channel fit and launch execution.`,
+        systemPrompt: "Evaluate channel fit, launch mechanics, store presentation, PDP clarity, and promotion pressure.",
+        color: "text-cyan-700",
+        bgColor: "bg-cyan-50 border-cyan-100",
+        sentimentBias: 0.1,
+      },
+      {
+        id: `contextual_culture_${Date.now()}`,
+        name: "The Culture Reader",
+        role: "Youth Culture Analyst",
+        perspective: `Tests whether the idea feels credible for ${draft.targetAge || "the target audience"}.`,
+        systemPrompt: "Evaluate cultural timing, social relevance, authenticity, age fit, and trend fatigue.",
+        color: "text-fuchsia-700",
+        bgColor: "bg-fuchsia-50 border-fuchsia-100",
+        sentimentBias: 0.2,
+      },
+    ];
+    onChange({
+      ...config,
+      customPersonas: [...config.customPersonas, ...generated],
+      selectedPersonaIds: [...config.selectedPersonaIds, ...generated.map((persona) => persona.id)],
+    });
+  };
+
+  const addCustomAgent = (persona: FashionPersona) => {
+    onChange({
+      ...config,
+      customPersonas: [...config.customPersonas, persona],
+      selectedPersonaIds: [...config.selectedPersonaIds, persona.id],
+    });
+  };
+
+  return (
+    <div className="space-y-6 border-t border-[#e7a6f1] pt-6">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wider text-ink/45">Debate rounds</p>
+        <div className="mt-3 flex items-center gap-3">
+          <button
+            className="h-9 w-9 rounded-md border border-ink/10 bg-white text-lg text-ink/45"
+            onClick={() => onChange({ ...config, rounds: Math.max(1, config.rounds - 1) })}
+            type="button"
+          >
+            -
+          </button>
+          <div className="flex-1 rounded-lg border border-ink/10 bg-white p-4 text-center">
+            <p className="text-2xl font-semibold">{config.rounds}</p>
+            <p className="mt-1 text-xs text-ink/45">
+              {config.rounds === 1 ? "Opening positions only" : "Opening, challenge, and final recommendations"}
+            </p>
+          </div>
+          <button
+            className="h-9 w-9 rounded-md border border-ink/10 bg-white text-lg text-ink/45"
+            onClick={() => onChange({ ...config, rounds: config.rounds + 1 })}
+            type="button"
+          >
+            +
+          </button>
+        </div>
+      </div>
+
+      <button
+        className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition ${
+          config.enableAdvocatus ? "border-[#df72ef] bg-[#fff0ff]" : "border-ink/10 bg-white"
+        }`}
+        onClick={() => onChange({ ...config, enableAdvocatus: !config.enableAdvocatus })}
+        type="button"
+      >
+        <span className="rounded-md bg-[#f3e3ff] px-2 py-1">☯</span>
+        <span className="flex-1">
+          <span className="block text-sm font-semibold">Advocatus Diaboli</span>
+          <span className="text-xs text-ink/45">Adiciona uma perspectiva que sempre desafia o consenso emergente</span>
+        </span>
+        <span
+          className={`h-4 w-4 rounded-full border-2 ${
+            config.enableAdvocatus ? "border-[#c83be0] bg-[#c83be0]" : "border-ink/20"
+          }`}
+        />
+      </button>
+
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wider text-ink/45">A/B provider comparison</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <ChipButton
+            active={config.comparisonProvider === "off"}
+            label="Off"
+            onClick={() => onChange({ ...config, comparisonProvider: "off" })}
+          />
+          {availableProviders.map((provider) => (
+            <ChipButton
+              active={config.comparisonProvider === provider}
+              key={provider}
+              label={providerLabel(provider)}
+              onClick={() => onChange({ ...config, comparisonProvider: provider })}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-ink/45">Agents</p>
+          <p className="text-xs font-semibold text-ink/60">{activeCount} active</p>
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+          {allPersonas.map((persona) => (
+            <button
+              className={`flex items-center gap-3 rounded-lg border p-3 text-left transition ${
+                config.selectedPersonaIds.includes(persona.id)
+                  ? "border-ink/15 bg-white shadow-sm"
+                  : "border-ink/10 bg-white/50 opacity-60"
+              }`}
+              key={persona.id}
+              onClick={() => togglePersona(persona.id)}
+              type="button"
+            >
+              <span className="rounded-md border border-ink/10 bg-ink/5 px-2 py-1">{personaAvatar(persona.id)}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold">{persona.name}</span>
+                <span className="block truncate text-xs text-ink/45">{persona.role}</span>
+              </span>
+              <span
+                className={`h-4 w-4 rounded-full ${
+                  config.selectedPersonaIds.includes(persona.id) ? "bg-[#f1a11b]" : "border border-ink/20"
+                }`}
+              />
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 space-y-2">
+          <button
+            className="block text-sm font-medium text-[#9f87ff] disabled:opacity-40"
+            onClick={generateContextualAgents}
+            type="button"
+          >
+            ✨ Generate 3 contextual agents with AI
+          </button>
+          <button className="block text-sm text-ink/55" onClick={onToggleCustomAgent} type="button">
+            + Add custom agent manually
+          </button>
+          {showCustomAgent ? <CustomAgentBuilder onAdd={addCustomAgent} /> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CustomAgentBuilder({ onAdd }: { onAdd: (persona: FashionPersona) => void }) {
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("");
+  const [perspective, setPerspective] = useState("");
+
+  const add = () => {
+    if (!name.trim() || !role.trim() || !perspective.trim()) return;
+    onAdd({
+      id: `custom_${Date.now()}`,
+      name: name.trim(),
+      role: role.trim(),
+      perspective: perspective.trim(),
+      systemPrompt: perspective.trim(),
+      color: "text-ink",
+      bgColor: "bg-white border-ink/10",
+      sentimentBias: 0,
+    });
+    setName("");
+    setRole("");
+    setPerspective("");
+  };
+
+  return (
+    <div className="rounded-lg border border-ink/10 bg-white p-4">
+      <div className="grid gap-3">
+        <input className={fieldClass} onChange={(event) => setName(event.target.value)} placeholder="Agent name" value={name} />
+        <input className={fieldClass} onChange={(event) => setRole(event.target.value)} placeholder="Role" value={role} />
+        <textarea
+          className={`${fieldClass} min-h-20 resize-none`}
+          onChange={(event) => setPerspective(event.target.value)}
+          placeholder="Perspective and evaluation style"
+          value={perspective}
+        />
+        <Button disabled={!name.trim() || !role.trim() || !perspective.trim()} onClick={add} type="button">
+          Add Agent
+        </Button>
       </div>
     </div>
   );
@@ -367,7 +644,31 @@ function ChipButton({ active, label, onClick }: { active: boolean; label: string
   );
 }
 
-function buildContext(draft: FashionIntelligenceDraft): { collection: CollectionPreset; brief: CollectionBrief } {
+function providerLabel(provider: string) {
+  if (provider === "openai") return "OpenAI";
+  if (provider === "gemini") return "Gemini";
+  if (provider === "anthropic") return "Claude";
+  if (provider === "ollama") return "Ollama";
+  return provider;
+}
+
+function personaAvatar(id: string) {
+  if (id.includes("forecaster")) return "🔮";
+  if (id.includes("buyer")) return "🛒";
+  if (id.includes("shopper")) return "🛍";
+  if (id.includes("brand")) return "💎";
+  if (id.includes("visual")) return "🎨";
+  if (id.includes("production")) return "♧";
+  if (id.includes("pricing")) return "$";
+  if (id.includes("channel")) return "⌘";
+  if (id.includes("culture")) return "✦";
+  return "•";
+}
+
+function buildContext(
+  draft: FashionIntelligenceDraft,
+  simulationConfig: SimulationConfigDraft,
+): { collection: CollectionPreset; brief: CollectionBrief } {
   const isLicensed = draft.collectionType === "licensed" || draft.goal === "discover_license";
   const name =
     draft.goal === "evaluate"
@@ -388,6 +689,12 @@ function buildContext(draft: FashionIntelligenceDraft): { collection: Collection
     `Retailer: ${draft.retailer || "not specified"}.`,
     `Target: ${draft.targetAge || "not specified"}, ${draft.targetGender || "not specified"}.`,
     `Price range: ${draft.priceRange || "not specified"}.`,
+    `Simulation rounds: ${simulationConfig.rounds}.`,
+    `Selected perspectives: ${simulationConfig.selectedPersonaIds.length + simulationConfig.customPersonas.length}.`,
+    simulationConfig.enableAdvocatus ? "Include a devil's advocate stress-test perspective." : "",
+    simulationConfig.comparisonProvider !== "off"
+      ? `Compare the primary model against ${providerLabel(simulationConfig.comparisonProvider)}.`
+      : "",
     draft.goal !== "evaluate" && draft.decliningReason
       ? `Decline context: ${draft.decliningReason}.`
       : "",
@@ -405,6 +712,9 @@ function buildContext(draft: FashionIntelligenceDraft): { collection: Collection
       `Audience: ${draft.targetAge || "not specified"}, ${draft.targetGender || "not specified"}.`,
       `Season: ${draft.season || "not specified"}.`,
       `Price: ${draft.priceRange || "not specified"}.`,
+      `Use ${simulationConfig.rounds} round(s) of critique depth and ${
+        simulationConfig.enableAdvocatus ? "include" : "do not include"
+      } a dissenting stress-test lens.`,
     ],
     categories: categories.map((category) => ({
       name: category,
