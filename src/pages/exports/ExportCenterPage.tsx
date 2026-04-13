@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useStudio } from "@/app/providers/studioContext";
 import { ActiveModelBadges } from "@/components/ai/ActiveModelBadges";
 import { AsyncBoundary } from "@/components/feedback/AsyncBoundary";
 import { Panel } from "@/components/panels/Panel";
@@ -10,6 +11,7 @@ import { formatDate } from "@/utils/format";
 
 export function ExportCenterPage() {
   const exports = useAsync(api.listExports, []);
+  const { activeCollection } = useStudio();
   const [bundles, setBundles] = useState(exports.data ?? []);
   const [message, setMessage] = useState("");
 
@@ -38,6 +40,40 @@ export function ExportCenterPage() {
     });
     setMessage(`${bundle.title} is processing.`);
     setBundles((current) => [bundle, ...current]);
+  };
+
+  const downloadBundle = (bundleId: string) => {
+    const photoshootKeys = Object.keys(window.localStorage).filter((key) =>
+      key.startsWith(`studio-design-os:photoshoot:${activeCollection.id}:`),
+    );
+    const photoshoots = photoshootKeys.map((key) => ({
+      key,
+      data: JSON.parse(window.localStorage.getItem(key) ?? "{}"),
+    }));
+    const bundle = bundles.find((item) => item.id === bundleId);
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      collection: activeCollection,
+      bundle,
+      included: {
+        conceptRender: true,
+        photoshootAssets: true,
+        technicalFlat: true,
+        scoreSummary: true,
+      },
+      photoshoots,
+      note:
+        "Image data URLs are included when generated photoshoots were saved in this browser. Backend file packaging can replace this JSON handoff later.",
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${activeCollection.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${bundleId}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -78,6 +114,20 @@ export function ExportCenterPage() {
                     {bundle.status === "processing" ? "processing..." : "complete"}
                   </Badge>
                 </div>
+                {bundle.status === "complete" ? (
+                  <Button
+                    className="mt-4"
+                    onClick={() => downloadBundle(bundle.id)}
+                    type="button"
+                    variant="secondary"
+                  >
+                    Download bundle JSON
+                  </Button>
+                ) : (
+                  <p className="mt-4 text-sm text-ink/55">
+                    Preparing metadata, selected assets, photoshoot references, and preset details.
+                  </p>
+                )}
               </Panel>
             ))}
           </div>
