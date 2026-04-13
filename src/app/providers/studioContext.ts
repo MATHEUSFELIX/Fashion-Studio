@@ -6,6 +6,7 @@ export interface StudioContextValue {
   activeCollection: CollectionPreset;
   activeCollectionId: string;
   addCollection: (collection: Omit<CollectionPreset, "id">) => void;
+  updateCollectionBrief: (id: string, brief: CollectionPreset["brief"]) => void;
   setActiveCollectionId: (id: string) => void;
 }
 

@@ -8,4 +8,15 @@ export interface CollectionPreset {
   categories: string[];
   palette: string;
   materials: string;
+  brief?: CollectionBrief;
+}
+
+export interface CollectionBrief {
+  concept: string;
+  keyDesignPrinciples: string[];
+  categories: Array<{
+    name: string;
+    details: string;
+  }>;
+  rulesApplied: string;
 }
