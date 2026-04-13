@@ -7,9 +7,14 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { useAsync } from "@/hooks/useAsync";
 import { api } from "@/services/api/mockApi";
+import type { CollectionPreset } from "@/types/domain/collectionPreset";
+import type { AssetType } from "@/types/domain/studio";
 import { formatDate } from "@/utils/format";
 
+type ExportIncludeKey = "conceptRender" | "photoshootAssets" | "technicalFlat" | "scoreSummary";
+
 interface ExportPreview {
+  included: Record<ExportIncludeKey, boolean>;
   photoshoots: Array<{
     key: string;
     data: {
@@ -19,12 +24,29 @@ interface ExportPreview {
   }>;
 }
 
+const exportOptions: Array<{
+  key: ExportIncludeKey;
+  label: string;
+  type: AssetType | "score";
+}> = [
+  { key: "conceptRender", label: "Concept render", type: "concept" },
+  { key: "photoshootAssets", label: "Photoshoot assets", type: "photoshoot" },
+  { key: "technicalFlat", label: "Technical flat", type: "technical_flat" },
+  { key: "scoreSummary", label: "Score summary", type: "score" },
+];
+
 export function ExportCenterPage() {
   const exports = useAsync(api.listExports, []);
   const { activeCollection } = useStudio();
   const [bundles, setBundles] = useState(exports.data ?? []);
   const [message, setMessage] = useState("");
   const [previewBundleId, setPreviewBundleId] = useState<string>();
+  const [included, setIncluded] = useState<Record<ExportIncludeKey, boolean>>({
+    conceptRender: true,
+    photoshootAssets: true,
+    technicalFlat: true,
+    scoreSummary: true,
+  });
 
   useEffect(() => {
     if (exports.data) {
@@ -42,12 +64,21 @@ export function ExportCenterPage() {
     return () => window.clearInterval(interval);
   }, [bundles]);
 
+  const selectedTypes = exportOptions
+    .filter((option) => included[option.key] && option.type !== "score")
+    .map((option) => option.type as AssetType);
+  const selectedCount = Object.values(included).filter(Boolean).length;
+
+  const toggleIncluded = (key: ExportIncludeKey) => {
+    setIncluded((current) => ({ ...current, [key]: !current[key] }));
+  };
+
   const createExport = async () => {
     const bundle = await api.createExport({
       title: "Studio handoff bundle",
       design_id: "des_123",
       asset_ids: ["asset_1", "asset_2"],
-      include_types: ["concept", "photoshoot", "technical_flat"],
+      include_types: selectedTypes,
     });
     setMessage(`${bundle.title} is processing.`);
     setBundles((current) => [bundle, ...current]);
@@ -67,10 +98,7 @@ export function ExportCenterPage() {
       collection: activeCollection,
       bundle,
       included: {
-        conceptRender: true,
-        photoshootAssets: true,
-        technicalFlat: true,
-        scoreSummary: true,
+        ...included,
       },
       photoshoots,
       note:
@@ -103,16 +131,23 @@ export function ExportCenterPage() {
         <h2 className="mt-3 text-3xl font-semibold tracking-tight">Export center</h2>
         <p className="mt-2 text-ink/65">Prepare concept, visual, and technical outputs for handoff.</p>
         <div className="mt-5 space-y-3">
-          {["Concept render", "Photoshoot assets", "Technical flat", "Score summary"].map((item) => (
-            <label className="flex items-center gap-3 text-sm" key={item}>
-              <input defaultChecked type="checkbox" />
-              {item}
+          {exportOptions.map((item) => (
+            <label className="flex items-center gap-3 text-sm" key={item.key}>
+              <input
+                checked={included[item.key]}
+                onChange={() => toggleIncluded(item.key)}
+                type="checkbox"
+              />
+              {item.label}
             </label>
           ))}
         </div>
-        <Button className="mt-5 w-full" onClick={createExport} type="button">
+        <Button className="mt-5 w-full" disabled={!selectedCount} onClick={createExport} type="button">
           Create export bundle
         </Button>
+        <p className="mt-3 text-xs text-ink/50">
+          {selectedCount ? `${selectedCount} sections selected.` : "Select at least one section."}
+        </p>
         {message ? <p className="mt-3 text-sm text-moss">{message}</p> : null}
       </Panel>
       <AsyncBoundary {...exports} data={bundles}>
@@ -175,20 +210,34 @@ export function ExportCenterPage() {
             ))}
           </div>
 
-          <div className="mt-6">
-            <h4 className="text-lg font-semibold">Collection preset</h4>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <PreviewMeta label="Theme" value={selectedPreview.collection.theme} />
-              <PreviewMeta label="Age group" value={selectedPreview.collection.ageGroup} />
-              <PreviewMeta label="Palette" value={selectedPreview.collection.palette} />
-              <PreviewMeta label="Materials" value={selectedPreview.collection.materials} />
+          {selectedPreview.included.conceptRender ? (
+            <div className="mt-6">
+              <h4 className="text-lg font-semibold">Concept render package</h4>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <PreviewMeta label="Collection" value={selectedPreview.collection.name} />
+                <PreviewMeta label="Theme" value={selectedPreview.collection.theme} />
+                <PreviewMeta label="Age group" value={selectedPreview.collection.ageGroup} />
+                <PreviewMeta label="Palette" value={selectedPreview.collection.palette} />
+                <PreviewMeta label="Materials" value={selectedPreview.collection.materials} />
+                <PreviewMeta label="Categories" value={selectedPreview.collection.categories.join(", ")} />
+              </div>
+              <p className="mt-3 rounded-md bg-ink/5 p-3 text-sm text-ink/70">
+                {selectedPreview.collection.rules}
+              </p>
             </div>
-            <p className="mt-3 rounded-md bg-ink/5 p-3 text-sm text-ink/70">
-              {selectedPreview.collection.rules}
-            </p>
-          </div>
+          ) : null}
 
-          <PhotoshootPreview preview={selectedPreview} />
+          {selectedPreview.included.photoshootAssets ? (
+            <PhotoshootPreview preview={selectedPreview} />
+          ) : null}
+
+          {selectedPreview.included.technicalFlat ? (
+            <TechnicalFlatPreview collection={selectedPreview.collection} />
+          ) : null}
+
+          {selectedPreview.included.scoreSummary ? (
+            <ScoreSummaryPreview collection={selectedPreview.collection} />
+          ) : null}
 
           <div className="mt-6">
             <h4 className="text-lg font-semibold">Manifest</h4>
@@ -200,7 +249,10 @@ export function ExportCenterPage() {
                   bundle: selectedPreview.bundle,
                   included: selectedPreview.included,
                   photoshootCount: selectedPreview.photoshoots.reduce(
-                    (total, item) => total + (item.data.images?.length ?? 0),
+                    (total, item) =>
+                      selectedPreview.included.photoshootAssets
+                        ? total + (item.data.images?.length ?? 0)
+                        : total,
                     0,
                   ),
                 },
@@ -244,6 +296,59 @@ function PhotoshootPreview({ preview }: { preview: ExportPreview }) {
           No saved photoshoot images found for this collection in this browser.
         </p>
       )}
+    </div>
+  );
+}
+
+function TechnicalFlatPreview({
+  collection,
+}: {
+  collection: CollectionPreset;
+}) {
+  const category = collection.categories[0] ?? "garment";
+  return (
+    <div className="mt-6">
+      <h4 className="text-lg font-semibold">Technical flat</h4>
+      <div className="mt-3 grid gap-3 md:grid-cols-4">
+        <PreviewMeta label="Base category" value={category} />
+        <PreviewMeta label="Front view" value="Included" />
+        <PreviewMeta label="Back view" value="Included" />
+        <PreviewMeta label="Materials" value={collection.materials} />
+      </div>
+      <div className="mt-3 rounded-md bg-white/70 p-4 text-sm text-ink/70">
+        Technical notes: preserve garment proportions, show clean seams, neckline, sleeve length,
+        hem, and construction details. Palette: {collection.palette}. Rules: {collection.rules}
+      </div>
+    </div>
+  );
+}
+
+function ScoreSummaryPreview({
+  collection,
+}: {
+  collection: CollectionPreset;
+}) {
+  const scores = [
+    ["Creative fit", 92],
+    ["Commercial clarity", 86],
+    ["Production readiness", 78],
+  ] as const;
+
+  return (
+    <div className="mt-6">
+      <h4 className="text-lg font-semibold">Score summary</h4>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        {scores.map(([label, value]) => (
+          <div className="rounded-md bg-ink/5 p-3" key={label}>
+            <p className="text-xs font-semibold uppercase text-ink/45">{label}</p>
+            <p className="mt-2 text-3xl font-semibold">{value}</p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 rounded-md bg-white/70 p-4 text-sm text-ink/70">
+        Recommendation: keep the collection focused on {collection.categories.join(", ")} with{" "}
+        {collection.materials}. Check that generated assets follow: {collection.rules}
+      </p>
     </div>
   );
 }
