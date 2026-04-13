@@ -5,6 +5,7 @@ export const routes = {
   variations: (id = ":designId") => `/designs/${id}/variations`,
   photoshoot: (id = ":designId") => `/designs/${id}/photoshoot`,
   technicalFlat: (id = ":designId") => `/designs/${id}/flat`,
+  technicalValidation: "/technical-validation",
   scoring: (id = ":designId") => `/designs/${id}/score`,
   review: (id = ":designId") => `/designs/${id}/score`,
   collections: "/collections",

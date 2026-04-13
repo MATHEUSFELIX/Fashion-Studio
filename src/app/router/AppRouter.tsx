@@ -11,6 +11,7 @@ import { ModelsPage } from "@/pages/models/ModelsPage";
 import { AiPhotoshootPage } from "@/pages/outputs/AiPhotoshootPage";
 import { ScoringPage } from "@/pages/outputs/ScoringPage";
 import { TechnicalFlatPage } from "@/pages/outputs/TechnicalFlatPage";
+import { TechnicalValidationPage } from "@/pages/outputs/TechnicalValidationPage";
 import { WorkspacePage } from "@/pages/home/WorkspacePage";
 
 export function AppRouter() {
@@ -24,6 +25,7 @@ export function AppRouter() {
         <Route path="designs/:designId/photoshoot" element={<AiPhotoshootPage />} />
         <Route path="designs/:designId/flat" element={<TechnicalFlatPage />} />
         <Route path="designs/:designId/score" element={<ScoringPage />} />
+        <Route path={routes.technicalValidation.slice(1)} element={<TechnicalValidationPage />} />
         <Route path="collections" element={<CollectionsPage />} />
         <Route path="assets" element={<AssetLibraryPage />} />
         <Route path="exports" element={<ExportCenterPage />} />

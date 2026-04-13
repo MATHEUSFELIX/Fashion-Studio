@@ -4,6 +4,8 @@ import { ActiveModelBadges } from "@/components/ai/ActiveModelBadges";
 import { AsyncBoundary } from "@/components/feedback/AsyncBoundary";
 import { Panel } from "@/components/panels/Panel";
 import { Badge } from "@/components/ui/Badge";
+import { DesignValidationPanel } from "@/features/fashion-intelligence/components/DesignValidationPanel";
+import { getFallbackBrief } from "@/features/fashion-intelligence/services/briefFallback";
 import { useAsync } from "@/hooks/useAsync";
 import { api } from "@/services/api/mockApi";
 
@@ -77,6 +79,14 @@ export function ScoringPage() {
               ))}
             </div>
           </Panel>
+          <DesignValidationPanel
+            context={{
+              collection: activeCollection,
+              brief: activeCollection.brief ?? getFallbackBrief(activeCollection),
+              sku: activeSku,
+              assets: skuAssets,
+            }}
+          />
         </div>
       )}
     </AsyncBoundary>

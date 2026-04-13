@@ -9,6 +9,7 @@ const items = [
   { label: "SKU Gen", to: routes.createDesign },
   { label: "Photoshoot", to: routes.photoshoot("des_123") },
   { label: "Review", to: routes.review("des_123") },
+  { label: "Technical Validation", to: routes.technicalValidation },
   { label: "Export", to: routes.exports },
   { label: "Models", to: routes.models },
 ];

@@ -8,6 +8,8 @@ import { AsyncBoundary } from "@/components/feedback/AsyncBoundary";
 import { Panel } from "@/components/panels/Panel";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { BriefIntelligencePanel } from "@/features/fashion-intelligence/components/BriefIntelligencePanel";
+import { getFallbackBrief } from "@/features/fashion-intelligence/services/briefFallback";
 import { useAsync } from "@/hooks/useAsync";
 import { aiApi } from "@/services/api/aiApi";
 import { api } from "@/services/api/mockApi";
@@ -21,13 +23,13 @@ export function WorkspacePage() {
   const [briefError, setBriefError] = useState<string>();
   const [isEditingBrief, setIsEditingBrief] = useState(false);
   const [draftBrief, setDraftBrief] = useState<CollectionBrief>(() =>
-    defaultBrief(activeCollection),
+    getFallbackBrief(activeCollection),
   );
 
   const brief = activeCollection.brief;
 
   useEffect(() => {
-    setDraftBrief(brief ?? defaultBrief(activeCollection));
+    setDraftBrief(brief ?? getFallbackBrief(activeCollection));
     setIsEditingBrief(false);
   }, [activeCollection.id, brief, activeCollection]);
 
@@ -111,7 +113,7 @@ export function WorkspacePage() {
                       </Button>
                       <Button
                         onClick={() => {
-                          setDraftBrief(brief ?? defaultBrief(activeCollection));
+                          setDraftBrief(brief ?? getFallbackBrief(activeCollection));
                           setIsEditingBrief(false);
                         }}
                         type="button"
@@ -130,7 +132,7 @@ export function WorkspacePage() {
               {isEditingBrief ? (
                 <BriefEditor draft={draftBrief} onChange={setDraftBrief} />
               ) : (
-                <BriefReadOnly brief={brief ?? defaultBrief(activeCollection)} />
+                <BriefReadOnly brief={brief ?? getFallbackBrief(activeCollection)} />
               )}
             </Panel>
 
@@ -154,6 +156,13 @@ export function WorkspacePage() {
               </div>
             </Panel>
           </section>
+
+          <BriefIntelligencePanel
+            context={{
+              collection: activeCollection,
+              brief: brief ?? getFallbackBrief(activeCollection),
+            }}
+          />
 
           <section>
             <div className="mb-4 flex items-end justify-between gap-4">
@@ -285,29 +294,6 @@ function BriefEditor({
       </label>
     </div>
   );
-}
-
-function defaultBrief(activeCollection: {
-  categories: string[];
-  rules: string;
-  materials: string;
-  palette: string;
-  ageGroup: string;
-}): CollectionBrief {
-  return {
-    concept: `A premium minimalist line of soft everyday pieces for children, focused on ${activeCollection.materials}, ${activeCollection.palette}. Every generated image should read like a kidswear SKU or neutral catalog photoshoot.`,
-    keyDesignPrinciples: [
-      `Palette: ${activeCollection.palette}.`,
-      `Materials: ${activeCollection.materials}.`,
-      `Age group: ${activeCollection.ageGroup}.`,
-      activeCollection.rules,
-    ],
-    categories: activeCollection.categories.map((category) => ({
-      name: category,
-      details: "Simple construction, soft hand feel, clean neutral presentation.",
-    })),
-    rulesApplied: activeCollection.rules,
-  };
 }
 
 function parseCategoryLines(value: string): CollectionBrief["categories"] {
