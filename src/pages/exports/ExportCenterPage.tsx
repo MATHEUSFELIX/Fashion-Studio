@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActiveModelBadges } from "@/components/ai/ActiveModelBadges";
 import { AsyncBoundary } from "@/components/feedback/AsyncBoundary";
 import { Panel } from "@/components/panels/Panel";
@@ -10,7 +10,24 @@ import { formatDate } from "@/utils/format";
 
 export function ExportCenterPage() {
   const exports = useAsync(api.listExports, []);
+  const [bundles, setBundles] = useState(exports.data ?? []);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (exports.data) {
+      setBundles(exports.data);
+    }
+  }, [exports.data]);
+
+  useEffect(() => {
+    if (!bundles.some((bundle) => bundle.status === "processing")) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      api.listExports().then(setBundles);
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [bundles]);
 
   const createExport = async () => {
     const bundle = await api.createExport({
@@ -20,6 +37,7 @@ export function ExportCenterPage() {
       include_types: ["concept", "photoshoot", "technical_flat"],
     });
     setMessage(`${bundle.title} is processing.`);
+    setBundles((current) => [bundle, ...current]);
   };
 
   return (
@@ -44,10 +62,10 @@ export function ExportCenterPage() {
         </Button>
         {message ? <p className="mt-3 text-sm text-moss">{message}</p> : null}
       </Panel>
-      <AsyncBoundary {...exports}>
-        {(data) => (
+      <AsyncBoundary {...exports} data={bundles}>
+        {() => (
           <div className="space-y-4">
-            {data.map((bundle) => (
+            {bundles.map((bundle) => (
               <Panel key={bundle.id}>
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div>
@@ -57,7 +75,7 @@ export function ExportCenterPage() {
                     </p>
                   </div>
                   <Badge tone={bundle.status === "complete" ? "success" : "neutral"}>
-                    {bundle.status}
+                    {bundle.status === "processing" ? "processing..." : "complete"}
                   </Badge>
                 </div>
               </Panel>

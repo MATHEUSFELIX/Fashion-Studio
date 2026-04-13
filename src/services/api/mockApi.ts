@@ -27,10 +27,25 @@ import type {
   GenerationJob,
 } from "@/types/domain/studio";
 
+const exportStorageKey = "studio-design-os:exports";
+
 const wait = <T>(value: T, delay = 280): Promise<T> =>
   new Promise((resolve) => {
     window.setTimeout(() => resolve(value), delay);
   });
+
+function readExports(): ExportBundle[] {
+  try {
+    const raw = window.localStorage.getItem(exportStorageKey);
+    return raw ? (JSON.parse(raw) as ExportBundle[]) : exportBundles;
+  } catch {
+    return exportBundles;
+  }
+}
+
+function writeExports(bundles: ExportBundle[]) {
+  window.localStorage.setItem(exportStorageKey, JSON.stringify(bundles));
+}
 
 export interface WorkspaceSummary {
   recentDesigns: Design[];
@@ -179,6 +194,7 @@ export const api = {
     ),
 
   createExport: (request: CreateExportRequest): Promise<ExportBundle> => {
+    const currentBundles = readExports();
     const bundle: ExportBundle = {
       id: `exp_${Date.now()}`,
       title: request.title,
@@ -186,10 +202,19 @@ export const api = {
       status: "processing",
       createdAt: new Date().toISOString(),
     };
-    exportBundles.unshift(bundle);
+    currentBundles.unshift(bundle);
+    writeExports(currentBundles);
+
+    window.setTimeout(() => {
+      const completed = readExports().map((item) =>
+        item.id === bundle.id ? { ...item, status: "complete" as const } : item,
+      );
+      writeExports(completed);
+    }, 3500);
+
     return wait(bundle);
   },
 
   listCollections: (): Promise<Collection[]> => wait(collections),
-  listExports: (): Promise<ExportBundle[]> => wait(exportBundles),
+  listExports: (): Promise<ExportBundle[]> => wait(readExports()),
 };
