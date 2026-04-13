@@ -101,6 +101,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           return next;
         });
         setActiveCollectionIdState(id);
+        return nextCollection;
       },
       updateCollectionBrief: (id: string, brief: CollectionPreset["brief"]) => {
         setCollections((current) => {

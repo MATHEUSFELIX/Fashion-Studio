@@ -7,6 +7,7 @@ import { CreateDesignPage } from "@/pages/designs/CreateDesignPage";
 import { DesignDetailPage } from "@/pages/designs/DesignDetailPage";
 import { VariationsPage } from "@/pages/designs/VariationsPage";
 import { ExportCenterPage } from "@/pages/exports/ExportCenterPage";
+import { FashionIntelligencePage } from "@/pages/intelligence/FashionIntelligencePage";
 import { ModelsPage } from "@/pages/models/ModelsPage";
 import { AiPhotoshootPage } from "@/pages/outputs/AiPhotoshootPage";
 import { ScoringPage } from "@/pages/outputs/ScoringPage";
@@ -19,6 +20,7 @@ export function AppRouter() {
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<WorkspacePage />} />
+        <Route path={routes.fashionIntelligence.slice(1)} element={<FashionIntelligencePage />} />
         <Route path={routes.createDesign.slice(1)} element={<CreateDesignPage />} />
         <Route path="designs/:designId" element={<DesignDetailPage />} />
         <Route path="designs/:designId/variations" element={<VariationsPage />} />

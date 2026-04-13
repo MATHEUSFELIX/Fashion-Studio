@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 
 const items = [
   { label: "Collection", to: routes.workspace },
+  { label: "Fashion Intelligence", to: routes.fashionIntelligence },
   { label: "SKU Gen", to: routes.createDesign },
   { label: "Photoshoot", to: routes.photoshoot("des_123") },
   { label: "Review", to: routes.review("des_123") },

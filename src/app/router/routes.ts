@@ -1,5 +1,6 @@
 export const routes = {
   workspace: "/",
+  fashionIntelligence: "/fashion-intelligence",
   createDesign: "/designs/new",
   designDetail: (id = ":designId") => `/designs/${id}`,
   variations: (id = ":designId") => `/designs/${id}/variations`,

@@ -9,7 +9,7 @@ export interface StudioContextValue {
   activeSku?: ProductSku;
   activeSkuId?: string;
   assets: StudioAsset[];
-  addCollection: (collection: Omit<CollectionPreset, "id">) => void;
+  addCollection: (collection: Omit<CollectionPreset, "id">) => CollectionPreset;
   updateCollectionBrief: (id: string, brief: CollectionPreset["brief"]) => void;
   setActiveCollectionId: (id: string) => void;
   addSku: (sku: Omit<ProductSku, "id" | "createdAt">) => ProductSku;
